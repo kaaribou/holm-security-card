@@ -1,4 +1,4 @@
-/* holm-security-card — https://github.com/kaaribou/holm-security-card — licence MIT — v1.0.0 */
+/* holm-security-card — https://github.com/kaaribou/holm-security-card — licence MIT — v1.1.0 */
 // holm-security-card — détecteurs de mouvement, ouvertures et détections caméra en un seul endroit
 // Deux vues : Tuiles (état + « il y a ») et Chronologie (activité des 24 dernières heures).
 // type: custom:holm-security-card
@@ -74,7 +74,7 @@ class HolmSecurityCard extends HTMLElement {
       if (g.layout === "camera") {
         const last = g.E.reduce((a, e) => (e.t > a.t ? e : a), { t: 0 });
         const anyOn = g.E.some((e) => e.on);
-        return `<div class="cam ${anyOn ? "on" : ""}"><div class="cn"><ha-icon icon="${g.icon || "mdi:cctv"}"></ha-icon><div><div class="nm">${g.name}</div>
+        return `<div class="cam ${anyOn ? "on" : ""}"><div class="cn" data-g="${g._i}"><ha-icon icon="${g.icon || "mdi:cctv"}"></ha-icon><div><div class="nm">${g.name}</div>
             <div class="sub">${anyOn ? `<b>Détection en cours</b>` : last.t ? `${last.name} · il y a ${rel(last.t)}` : "—"}</div></div></div>
           <div class="ci">${g.E.map((e) => `<button class="dot ${e.on ? "on" : ""} ${Date.now() - e.t < 900000 && !e.on ? "rc" : ""} ${e.unavailable ? "na" : ""}" data-e="${e.entity}" title="${e.name} : ${e.on ? "en cours" : "il y a " + rel(e.t)}">
             <ha-icon icon="${e.icon}"></ha-icon><span>${e.on ? "maint." : rel(e.t)}</span></button>`).join("")}</div></div>`;
@@ -84,6 +84,20 @@ class HolmSecurityCard extends HTMLElement {
           title="${e.t ? new Date(e.t).toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}">
           <ha-icon icon="${e.icon}"></ha-icon><div class="tn">${e.name}</div><div class="tt">${e.unavailable ? "indisponible" : e.on ? (e.on_label || "détection") : rel(e.t)}</div></button>`).join("")}</div></div>`;
     }).join("");
+  }
+  // respecte l'ordre des groupes ; les groupes caméra qui se suivent forment un bloc « Caméras »
+  _runs(G) {
+    const runs = [];
+    G.forEach((g, i) => {
+      const cam = g.layout === "camera", last = runs[runs.length - 1];
+      if (cam && last && last.cam) last.items.push({ g, i }); else runs.push({ cam, items: [{ g, i }] });
+    });
+    return runs;
+  }
+  _tilesOrdered(G) {
+    return this._runs(G).map((r) => r.cam
+      ? `<div class="grp"><div class="gh"><ha-icon icon="mdi:cctv"></ha-icon>Caméras</div><div class="cams">${this._tiles(r.items.map((x) => x.g))}</div></div>`
+      : this._tiles(r.items.map((x) => x.g))).join("");
   }
   _timeline(G) {
     const H = this._hist;
@@ -96,12 +110,13 @@ class HolmSecurityCard extends HTMLElement {
     for (let t = +t0; t < H.end; t += 3600000) if (new Date(t).getHours() % step === 0) ticks.push(t);
     const bar = (segs, color) => segs.map(([a, b]) => `<i style="left:${pct(a)}%;width:max(2px,${(((b - a) / span) * 100).toFixed(3)}%);background:${color}"></i>`).join("");
     const grid = ticks.map((t) => `<u style="left:${pct(t)}%"></u>`).join("");
-    let camHead = false;
-    const rows = G.map((g) => {
-      if (g.layout === "camera") {
-        const head = camHead ? "" : `<div class="tg">Caméras</div>`; camHead = true;
+    let prevCam = false;
+    const rows = G.map((g, gi) => {
+      const isCam = g.layout === "camera", wasCam = prevCam; prevCam = isCam;
+      if (isCam) {
+        const head = wasCam ? "" : `<div class="tg">Caméras</div>`;
         const n = g.E.reduce((a, e) => a + (H.seg[e.entity] || []).length, 0);
-        return `${head}<div class="tr"><div class="tl"><ha-icon icon="${g.icon || "mdi:cctv"}"></ha-icon>${g.name}</div>
+        return `${head}<div class="tr" data-g="${gi}"><div class="tl"><ha-icon icon="${g.icon || "mdi:cctv"}"></ha-icon>${g.name}</div>
           <div class="tb tbc">${grid}${g.E.map((e) => bar(H.seg[e.entity] || [], KIND(e)[1])).join("")}</div><div class="tc">${n || ""}</div></div>`;
       }
       return `<div class="tg">${g.name}</div>` + g.E.map((e) => {
@@ -117,7 +132,8 @@ class HolmSecurityCard extends HTMLElement {
   _render() {
     if (!this.shadowRoot || !this._c || !this._hass) return;
     const c = this._c;
-    const G = c.groups.map((g) => ({ ...g, E: (g.entities || []).map((e) => this._ent(e, g)) }));
+    const G = c.groups.map((g, i) => ({ ...g, _i: i, E: (g.entities || []).map((e) => this._ent(e, g)) }));
+    this._G = G;
     const all = G.flatMap((g) => g.E.map((e) => ({ ...e, g: g.name, cam: g.layout === "camera" })));
     const active = all.filter((e) => e.on);
     const last = all.filter((e) => e.t && !e.unavailable).sort((a, b) => b.t - a.t)[0];
@@ -165,7 +181,7 @@ class HolmSecurityCard extends HTMLElement {
       .cams { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:6px; }
       .cam { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border-radius:12px; background:color-mix(in srgb, var(--primary-text-color) 5%, transparent); border:1px solid transparent; }
       .cam.on { border-color:${ACT}; background:color-mix(in srgb, ${ACT} 12%, transparent); }
-      .cn { display:flex; align-items:center; gap:8px; min-width:0; } .cn > ha-icon { --mdc-icon-size:20px; color:var(--secondary-text-color); flex:none; }
+      .cn { display:flex; align-items:center; gap:8px; min-width:0; cursor:pointer; } .cn > ha-icon { --mdc-icon-size:20px; color:var(--secondary-text-color); flex:none; }
       .cn .nm { font-size:13px; font-weight:600; color:var(--primary-text-color); } .cn .sub { font-size:11px; color:var(--secondary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .cn .sub b { color:${ACT}; }
       .ci { display:flex; gap:4px; flex:none; }
@@ -197,20 +213,181 @@ class HolmSecurityCard extends HTMLElement {
         <div class="seg">${[["tiles", "mdi:view-grid-outline", "Tuiles"], ["timeline", "mdi:chart-timeline", `${c.hours} h`]].map(([k, ic, l]) => `<button data-v="${k}" class="${this._view === k ? "on" : ""}"><ha-icon icon="${ic}"></ha-icon>${l}</button>`).join("")}</div></div>
       ${status}
       <div class="kp"><b>${n1h}</b> capteur${n1h > 1 ? "s" : ""} actif${n1h > 1 ? "s" : ""} dans la dernière heure</div>
-      ${this._view === "timeline" ? this._timeline(G)
-        : this._tiles(G.filter((g) => g.layout !== "camera")) + (G.some((g) => g.layout === "camera") ? `<div class="gh"><ha-icon icon="mdi:cctv"></ha-icon>Caméras</div><div class="cams">${this._tiles(G.filter((g) => g.layout === "camera"))}</div>` : "")}
+      ${this._view === "timeline" ? this._timeline(G) : this._tilesOrdered(G)}
     </ha-card>`;
     const sr = this.shadowRoot;
-    sr.querySelectorAll("[data-e]").forEach((el) => el.addEventListener("click", () => {
-      const e = new Event("hass-more-info", { bubbles: true, composed: true }); e.detail = { entityId: el.dataset.e }; this.dispatchEvent(e);
-    }));
+    sr.querySelectorAll("[data-e]").forEach((el) => el.addEventListener("click", (ev) => { ev.stopPropagation(); this._popup(el.dataset.e, null); }));
+    sr.querySelectorAll("[data-g]").forEach((el) => el.addEventListener("click", () => this._popup(null, Number(el.dataset.g))));
     sr.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => { this._view = b.dataset.v; this._render(); if (this._view === "timeline") this._load(); }));
+  }
+  _moreInfo(id) { const e = new Event("hass-more-info", { bubbles: true, composed: true }); e.detail = { entityId: id }; this.dispatchEvent(e); }
+  _popup(entity, gi) {
+    const G = this._G || [];
+    let lanes, title, icon;
+    if (gi != null && G[gi]) {
+      const g = G[gi]; title = g.name; icon = g.icon || (g.layout === "camera" ? "mdi:cctv" : "mdi:home");
+      lanes = g.E.map((e) => ({ entity: e.entity, name: g.layout === "camera" ? KIND(e)[0] : e.name, icon: e.icon, color: g.layout === "camera" ? KIND(e)[1] : ACT, label: e.on_label }));
+    } else {
+      for (const g of G) for (const e of g.E) if (e.entity === entity && !lanes) {
+        const cam = g.layout === "camera";
+        title = cam ? `${g.name} · ${KIND(e)[0]}` : e.name; icon = e.icon;
+        lanes = [{ entity: e.entity, name: cam ? KIND(e)[0] : e.name, icon: e.icon, color: cam ? KIND(e)[1] : ACT, label: e.on_label }];
+      }
+    }
+    if (!lanes) return;
+    let dlg = document.querySelector("holm-security-timeline");
+    if (!dlg) { dlg = document.createElement("holm-security-timeline"); document.body.appendChild(dlg); }
+    dlg.open(this, this._hass, { title, icon, lanes });
   }
   static getConfigElement() { return document.createElement("holm-security-card-editor"); }
   static getStubConfig() { return { title: "Sécurité", groups: [{ name: "Intérieur", icon: "mdi:home", entities: [] }] }; }
   getCardSize() { return 8; }
   getGridOptions() { return { columns: 12, rows: "auto", min_columns: 6 }; }
 }
+
+// ---------------- Popup : chronologie d'une journée ----------------
+const DAY = 86400000;
+const dur = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `${s} s`; const m = Math.round(s / 60); if (m < 60) return `${m} min`; const h = Math.floor(m / 60), r = m % 60; return r ? `${h} h ${String(r).padStart(2, "0")}` : `${h} h`; };
+const dayLabel = (t, d) => d === 0 ? "Aujourd'hui" : d === 1 ? "Hier" : new Date(t).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }).replace(/^./, (c) => c.toUpperCase());
+class HolmSecurityTimeline extends HTMLElement {
+  open(card, hass, opts) {
+    this._card = card; this._hass = hass; this._o = opts; this._d = 0; this._data = null;
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    if (!this._esc) { this._esc = (e) => { if (e.key === "Escape") this.close(); if (e.key === "ArrowLeft") this._go(1); if (e.key === "ArrowRight") this._go(-1); }; }
+    window.addEventListener("keydown", this._esc);
+    this.style.display = "block"; this._render(); this._load();
+  }
+  close() { this.style.display = "none"; window.removeEventListener("keydown", this._esc); }
+  _go(delta) { const d = Math.max(0, Math.min(30, this._d + delta)); if (d === this._d) return; this._d = d; this._data = null; this._render(); this._load(); }
+  _range() { const s = new Date(); s.setHours(0, 0, 0, 0); const start = s.getTime() - this._d * DAY; return { start, end: start + DAY }; }
+  async _load() {
+    const { start, end } = this._range(), stop = Math.min(end, Date.now()), d = this._d;
+    try {
+      const r = await this._hass.callWS({ type: "history/history_during_period", start_time: new Date(start).toISOString(), end_time: new Date(stop).toISOString(),
+        entity_ids: this._o.lanes.map((l) => l.entity), minimal_response: true, no_attributes: true, significant_changes_only: false });
+      const seg = {};
+      for (const l of this._o.lanes) {
+        const out = []; let on = null;
+        for (const x of (r || {})[l.entity] || []) {
+          const t = Math.max((x.lu || x.lc) * 1000, start);
+          if (x.s === "on" && on === null) on = t; else if (x.s !== "on" && on !== null) { out.push([on, t]); on = null; }
+        }
+        if (on !== null) out.push([on, stop, true]);
+        seg[l.entity] = out;
+      }
+      if (d === this._d) { this._data = { start, end, stop, seg }; this._render(); }
+    } catch (e) { if (d === this._d) { this._data = { err: e?.message || String(e) }; this._render(); } }
+  }
+  _render() {
+    const o = this._o, D = this._data, { start, end } = this._range();
+    const pct = (t) => (((t - start) / DAY) * 100).toFixed(3);
+    let body;
+    if (!D) body = `<div class="msg">Chargement…</div>`;
+    else if (D.err) body = `<div class="msg err">Erreur : ${D.err}</div>`;
+    else {
+      const all = o.lanes.flatMap((l) => (D.seg[l.entity] || []).map((s) => ({ a: s[0], b: s[1], live: !!s[2], l })));
+      const total = all.reduce((x, e) => x + (e.b - e.a), 0);
+      const first = all.length ? Math.min(...all.map((e) => e.a)) : null, last = all.length ? Math.max(...all.map((e) => e.a)) : null;
+      const hist = Array.from({ length: 24 }, () => new Map()); all.forEach((e) => { const m = hist[new Date(e.a).getHours()]; m.set(e.l, (m.get(e.l) || 0) + 1); });
+      const hsum = hist.map((m) => [...m.values()].reduce((a, b) => a + b, 0)), hmax = Math.max(1, ...hsum);
+      const ticks = [0, 3, 6, 9, 12, 15, 18, 21, 24];
+      const now = this._d === 0 ? `<div class="now" style="left:${pct(Date.now())}%"><span>${hm(Date.now())}</span></div>` : "";
+      const future = this._d === 0 ? `<div class="fut" style="left:${pct(Date.now())}%"></div>` : "";
+      const lanes = o.lanes.map((l) => `<div class="ln"><div class="lb"><ha-icon icon="${l.icon || "mdi:motion-sensor"}"></ha-icon><span>${l.name}</span></div>
+        <div class="trk" data-l="${l.entity}">${ticks.slice(1, -1).map((h) => `<u style="left:${(h / 24) * 100}%"></u>`).join("")}${future}
+          ${(D.seg[l.entity] || []).map(([a, b, live]) => `<i class="${live ? "live" : ""}" style="left:${pct(a)}%;width:max(3px,${(((b - a) / DAY) * 100).toFixed(3)}%);--c:${l.color}"></i>`).join("")}${now}</div></div>`).join("");
+      const axis = `<div class="ln ax"><div class="lb"></div><div class="trk">${ticks.map((h) => `<em class="${h % 6 ? "o" : ""}" style="left:${(h / 24) * 100}%">${h}h</em>`).join("")}</div></div>`;
+      const bars = `<div class="ln hs"><div class="lb"><span>Par heure</span></div><div class="bars">${hist.map((m, h) => { const n = hsum[h];
+        return `<b title="${h}h – ${h + 1}h : ${n} détection${n > 1 ? "s" : ""}" style="height:${n ? Math.max(8, (n / hmax) * 100) : 0}%">${o.lanes.filter((l) => m.get(l)).map((l) => `<s style="flex:${m.get(l)};--c:${l.color}"></s>`).join("")}</b>`; }).join("")}</div></div>`;
+      const multi = o.lanes.length > 1;
+      const list = all.sort((x, y) => y.a - x.a).slice(0, 80).map((e) => `<div class="ev"><span class="t">${hm(e.a)}</span><span class="pill" style="--c:${e.l.color}"></span>
+        <span class="n">${multi ? e.l.name : (e.l.label || "Détection")}${e.live ? ` <b>en cours</b>` : ""}</span><span class="d">${dur(e.b - e.a)}</span></div>`).join("");
+      body = `<div class="kpi"><div><b>${all.length}</b><span>détection${all.length > 1 ? "s" : ""}</span></div><div><b>${all.length ? dur(total) : "—"}</b><span>actif au total</span></div>
+          <div><b>${first ? hm(first) : "—"}</b><span>première</span></div><div><b>${last ? hm(last) : "—"}</b><span>dernière</span></div></div>
+        <div class="chart">${lanes}${axis}${bars}<div class="tip"></div></div>
+        <div class="lst">${list || `<div class="msg">Aucune activité ${this._d === 0 ? "aujourd'hui" : "ce jour-là"}.</div>`}</div>`;
+    }
+    this.shadowRoot.innerHTML = `<style>
+      :host { position:fixed; inset:0; z-index:9999; display:block; font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif); }
+      .bd { position:absolute; inset:0; background:rgba(4,10,16,.55); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); animation:fi .2s; }
+      .dlg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(780px, 94vw); max-height:90vh; overflow:auto; box-sizing:border-box; padding:18px 20px 16px;
+        background:var(--ha-card-background, var(--card-background-color, #1c2430)); color:var(--primary-text-color, #e8eef3); border-radius:22px;
+        box-shadow:0 20px 60px rgba(0,0,0,.5), 0 0 0 1px color-mix(in srgb, var(--primary-text-color, #fff) 8%, transparent); animation:pop .22s cubic-bezier(.2,.9,.3,1.2); }
+      @keyframes fi { from { opacity:0 } } @keyframes pop { from { opacity:0; transform:translate(-50%,-46%) scale(.97) } }
+      .hd { display:flex; align-items:center; gap:12px; }
+      .ic { width:42px; height:42px; border-radius:14px; display:grid; place-items:center; background:color-mix(in srgb, ${ACT} 16%, transparent); color:${ACT}; flex:none; }
+      .ic ha-icon { --mdc-icon-size:24px; }
+      .ti { flex:1; min-width:0; } .ti b { display:block; font-size:18px; } .ti span { font-size:12.5px; color:var(--secondary-text-color, #9aa7b2); }
+      button { font:inherit; color:inherit; cursor:pointer; border:none; background:color-mix(in srgb, var(--primary-text-color, #fff) 7%, transparent); border-radius:12px; height:36px; min-width:36px; display:inline-grid; place-items:center; padding:0 10px; }
+      button:hover { background:color-mix(in srgb, var(--primary-text-color, #fff) 13%, transparent); } button:disabled { opacity:.3; cursor:default; }
+      button ha-icon { --mdc-icon-size:20px; }
+      .nav { display:flex; align-items:center; justify-content:center; gap:10px; margin:14px 0 12px; }
+      .nav .day { min-width:210px; text-align:center; font-weight:600; font-size:14px; }
+      .kpi { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:14px; }
+      .kpi div { background:color-mix(in srgb, var(--primary-text-color, #fff) 5%, transparent); border-radius:14px; padding:10px 12px; }
+      .kpi b { display:block; font-size:19px; font-variant-numeric:tabular-nums; } .kpi span { font-size:11.5px; color:var(--secondary-text-color, #9aa7b2); }
+      .chart { position:relative; display:flex; flex-direction:column; gap:6px; }
+      .ln { display:grid; grid-template-columns:112px 1fr; gap:10px; align-items:center; }
+      .lb { display:flex; align-items:center; gap:6px; font-size:12.5px; min-width:0; } .lb span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .lb ha-icon { --mdc-icon-size:16px; color:var(--secondary-text-color, #9aa7b2); flex:none; }
+      .trk { position:relative; height:34px; border-radius:10px; background:color-mix(in srgb, var(--primary-text-color, #fff) 5%, transparent); cursor:crosshair; }
+      .trk u { position:absolute; top:0; bottom:0; width:1px; background:color-mix(in srgb, var(--primary-text-color, #fff) 7%, transparent); }
+      .trk i { position:absolute; top:5px; bottom:5px; border-radius:6px; background:linear-gradient(180deg, color-mix(in srgb, var(--c) 85%, #fff), var(--c));
+        box-shadow:0 0 10px color-mix(in srgb, var(--c) 55%, transparent); animation:grow .5s ease-out both; transform-origin:left; }
+      .trk i.live { animation:grow .5s ease-out both, pulse 1.6s ease-in-out .5s infinite alternate; }
+      @keyframes grow { from { transform:scaleX(0); opacity:0 } } @keyframes pulse { to { box-shadow:0 0 18px var(--c); } }
+      .fut { position:absolute; top:0; bottom:0; right:0; border-radius:0 10px 10px 0; background:repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--primary-text-color, #fff) 4%, transparent) 6px 12px); }
+      .now { position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:${RECENT}; border-radius:2px; box-shadow:0 0 8px ${RECENT}; }
+      .now span { display:none; }
+      .ax .trk { background:none; height:16px; cursor:default; } .ax em { position:absolute; transform:translateX(-50%); font-style:normal; font-size:10.5px; color:var(--secondary-text-color, #9aa7b2); }
+      .ax em:first-child { transform:none; } .ax em:last-child { transform:translateX(-100%); }
+      .hs .lb span { font-size:11px; color:var(--secondary-text-color, #9aa7b2); text-transform:uppercase; letter-spacing:.5px; }
+      .bars { height:46px; display:grid; grid-template-columns:repeat(24, 1fr); gap:3px; align-items:end; }
+      .bars b { display:flex; flex-direction:column-reverse; gap:1px; border-radius:4px 4px 2px 2px; overflow:hidden; animation:rise .5s ease-out both; }
+      .bars s { display:block; text-decoration:none; background:linear-gradient(180deg, var(--c), color-mix(in srgb, var(--c) 50%, transparent)); }
+      @keyframes rise { from { transform:scaleY(0); transform-origin:bottom } }
+      .tip { position:absolute; pointer-events:none; opacity:0; transform:translate(-50%, -100%); background:rgba(10,16,24,.92); color:#fff; font-size:12px; padding:5px 9px; border-radius:8px; white-space:nowrap; transition:opacity .1s; }
+      .lst { margin-top:14px; max-height:230px; overflow:auto; display:flex; flex-direction:column; gap:2px; }
+      .ev { display:grid; grid-template-columns:48px 10px 1fr auto; gap:10px; align-items:center; padding:6px 8px; border-radius:10px; font-size:13px; }
+      .ev:nth-child(odd) { background:color-mix(in srgb, var(--primary-text-color, #fff) 3%, transparent); }
+      .ev .t { font-variant-numeric:tabular-nums; font-weight:600; } .ev .d { color:var(--secondary-text-color, #9aa7b2); font-variant-numeric:tabular-nums; }
+      .ev .n b { color:${ACT}; font-weight:600; }
+      .pill { width:10px; height:10px; border-radius:4px; background:var(--c); box-shadow:0 0 6px var(--c); }
+      .msg { color:var(--secondary-text-color, #9aa7b2); text-align:center; padding:26px 0; font-size:13px; } .err { color:var(--error-color, #e05a5a); }
+      .ft { display:flex; justify-content:flex-end; margin-top:12px; } .ft button { gap:6px; display:inline-flex; align-items:center; font-size:13px; }
+      @media (max-width: 560px) { .kpi { grid-template-columns:repeat(2, 1fr); } .ln { grid-template-columns:78px 1fr; } .ax em.o { display:none; } .dlg { padding:14px; } .nav .day { min-width:0; } }
+      @media (prefers-reduced-motion: reduce) { .trk i, .bars b, .dlg, .bd { animation:none !important; } }
+    </style>
+    <div class="bd"></div>
+    <div class="dlg" role="dialog" aria-label="${o.title}">
+      <div class="hd"><div class="ic"><ha-icon icon="${o.icon || "mdi:motion-sensor"}"></ha-icon></div>
+        <div class="ti"><b>${o.title}</b><span>Chronologie de la journée</span></div><button class="x" aria-label="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>
+      <div class="nav"><button class="prev" aria-label="Jour précédent" ${this._d >= 30 ? "disabled" : ""}><ha-icon icon="mdi:chevron-left"></ha-icon></button>
+        <div class="day">${dayLabel(start, this._d)}${this._d > 1 ? "" : ` · ${new Date(start).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`}</div>
+        <button class="next" aria-label="Jour suivant" ${this._d === 0 ? "disabled" : ""}><ha-icon icon="mdi:chevron-right"></ha-icon></button></div>
+      ${body}
+      <div class="ft">${o.lanes.length === 1 ? `<button class="mi"><ha-icon icon="mdi:information-outline"></ha-icon>Détails du capteur</button>` : ""}</div>
+    </div>`;
+    const sr = this.shadowRoot;
+    sr.querySelector(".bd").onclick = () => this.close();
+    sr.querySelector(".x").onclick = () => this.close();
+    sr.querySelector(".prev").onclick = () => this._go(1);
+    sr.querySelector(".next").onclick = () => this._go(-1);
+    const mi = sr.querySelector(".mi"); if (mi) mi.onclick = () => { const id = o.lanes[0].entity; this.close(); this._card?._moreInfo(id); };
+    const tip = sr.querySelector(".tip"), chart = sr.querySelector(".chart");
+    if (tip && D && !D.err) sr.querySelectorAll(".trk[data-l]").forEach((trk) => {
+      trk.addEventListener("mousemove", (ev) => {
+        const r = trk.getBoundingClientRect(), c = chart.getBoundingClientRect(), x = Math.min(Math.max(ev.clientX - r.left, 0), r.width);
+        const t = start + (x / r.width) * DAY, tol = (6 / r.width) * DAY;
+        const hit = (D.seg[trk.dataset.l] || []).find(([a, b]) => t >= a - tol && t <= b + tol);
+        tip.textContent = hit ? `${hm(hit[0])} → ${hit[2] ? "en cours" : hm(hit[1])} · ${dur(hit[1] - hit[0])}` : t > Date.now() ? hm(t) : `${hm(t)} · calme`;
+        tip.style.left = `${ev.clientX - c.left}px`; tip.style.top = `${r.top - c.top - 6}px`; tip.style.opacity = 1;
+      });
+      trk.addEventListener("mouseleave", () => (tip.style.opacity = 0));
+    });
+  }
+}
+if (!customElements.get("holm-security-timeline")) customElements.define("holm-security-timeline", HolmSecurityTimeline);
 
 // ---------------- Éditeur visuel ----------------
 const L = { title: "Titre", hours: "Durée de la chronologie (heures)", view: "Vue par défaut", show_frame: "Afficher le cadre de la carte",
@@ -261,4 +438,4 @@ window.customCards = window.customCards || [];
 window.customCards.push({ type: "holm-security-card", name: "HOLM – Sécurité", description: "Mouvements, ouvertures et détections caméra : tuiles en direct et chronologie 24 h", preview: false });
 })();
 
-console.info("%c HOLM-SECURITY %c 1.0.0 ", "background:#e2702a;color:#111;border-radius:3px 0 0 3px", "background:#123;color:#fff;border-radius:0 3px 3px 0");
+console.info("%c HOLM-SECURITY %c 1.1.0 ", "background:#e2702a;color:#111;border-radius:3px 0 0 3px", "background:#123;color:#fff;border-radius:0 3px 3px 0");

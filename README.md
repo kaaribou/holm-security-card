@@ -16,11 +16,17 @@ HOLM Security Card rassemble vos détecteurs de mouvement, vos capteurs d'ouvert
 - 🧱 **Tuiles** par groupe : état, libellé personnalisable (« ouverte », « détection »), temps écoulé depuis le dernier changement.
 - 📷 **Caméras** sur une ligne compacte : dernières détections Personne / Véhicule / Animal.
 - 📊 **Chronologie** : chaque détection sur une frise (24 h par défaut), avec le nombre d'événements par capteur et une légende par type.
+- 🔎 **Chronologie de la journée au toucher** : un clic sur un capteur (ou sur une caméra) ouvre une fenêtre avec la frise de la journée, les détections par heure, le total, la première et la dernière, et la liste des événements. On remonte les jours précédents avec ‹ ›.
+- 🗂️ **Ordre des groupes respecté** : l'affichage suit l'ordre de l'éditeur ; les caméras qui se suivent sont regroupées sous « Caméras ».
 - 🎨 Couleur orange pour ce qui est actif, turquoise pour ce qui vient de se produire.
 
 | Tuiles | Chronologie 24 h |
 |---|---|
 | ![Tuiles](docs/images/tuiles.png) | ![Chronologie](docs/images/chronologie.png) |
+
+**Chronologie de la journée** (clic sur un capteur ou une caméra)
+
+![Chronologie de la journée](docs/images/journee.png)
 
 ---
 
@@ -87,6 +93,7 @@ En disposition `camera`, le type de détection est reconnu d'après le nom de l'
 | Problème | Solution |
 |---|---|
 | Chronologie vide | Les capteurs doivent être enregistrés dans l'historique (recorder). |
+| Accéder à la fiche du capteur | Dans la fenêtre de chronologie, bouton **Détails du capteur**. |
 | La nouvelle version ne s'affiche pas | Videz le cache (Ctrl + F5). |
 
 ---
@@ -103,4 +110,4 @@ La carte vous plaît ? Vous pouvez m'offrir une bière 🍺
 
 Code : licence **MIT** — © kaaribou. Voir le [CHANGELOG](CHANGELOG.md).
 
-Fait partie de la collection **HOLM** : [Carburant HOLM](https://github.com/kaaribou/carburant-holm) · [HOLM Navbar Card](https://github.com/kaaribou/holm-navbar-card) · [HOLM Music Card](https://github.com/kaaribou/holm-music-card) · [HOLM Sentinel Card](https://github.com/kaaribou/holm-sentinel-card).
+Fait partie de la collection **HOLM** : [Volets HOLM](https://github.com/kaaribou/volets-holm) · [Climat HOLM](https://github.com/kaaribou/climat-holm) · [Carburant HOLM](https://github.com/kaaribou/carburant-holm) · [HOLM Climate Card](https://github.com/kaaribou/climate-card-holm) · [HOLM Covers Card](https://github.com/kaaribou/holm-covers-card) · [HOLM Navbar Card](https://github.com/kaaribou/holm-navbar-card) · [HOLM Music Card](https://github.com/kaaribou/holm-music-card) · [HOLM Sentinel Card](https://github.com/kaaribou/holm-sentinel-card) · [HOLM Power Flow Card](https://github.com/kaaribou/holm-power-flow-card) · [HOLM Energy Cards](https://github.com/kaaribou/holm-energy-cards) · [HOLM Radiator Card](https://github.com/kaaribou/holm-radiator-card) · [HOLM Floor Card](https://github.com/kaaribou/holm-floor-card) · [HOLM Smoke Card](https://github.com/kaaribou/holm-smoke-card) · [HOLM BG Card](https://github.com/kaaribou/holm-bg-card).
