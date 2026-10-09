@@ -1,4 +1,4 @@
-/* holm-security-card — https://github.com/kaaribou/holm-security-card — licence MIT — v1.1.0 */
+/* holm-security-card — https://github.com/kaaribou/holm-security-card — licence MIT — v1.1.1 */
 // holm-security-card — détecteurs de mouvement, ouvertures et détections caméra en un seul endroit
 // Deux vues : Tuiles (état + « il y a ») et Chronologie (activité des 24 dernières heures).
 // type: custom:holm-security-card
@@ -10,6 +10,26 @@
 //   - name: Allée        icon: mdi:cctv   layout: camera   (une ligne compacte : Personne / Véhicule / Animal)
 //     entities: [...]
 (() => {
+// Garde la position de défilement pendant un nouveau rendu complet de la carte (iPhone / iPad : WebKit n'a pas de
+// « scroll anchoring » et la page remontait d'un coup). On fige la hauteur de la carte et on remet le défilement en place.
+const keepScroll = (host, fn) => {
+  const saved = [];
+  let n = host;
+  while (n) {
+    n = n.assignedSlot || n.parentNode || n.host;
+    if (n && n.nodeType === 1 && n.scrollHeight > n.clientHeight) saved.push([n, n.scrollTop]);
+  }
+  const se = document.scrollingElement;
+  if (se) saved.push([se, se.scrollTop]);
+  const h = host.offsetHeight;
+  if (h) host.style.minHeight = `${h}px`;
+  try { return fn(); } finally {
+    const restore = () => saved.forEach(([el, t]) => { if (Math.abs(el.scrollTop - t) > 1) el.scrollTop = t; });
+    restore();
+    requestAnimationFrame(() => { restore(); host.style.minHeight = ""; requestAnimationFrame(restore); });
+    setTimeout(() => { host.style.minHeight = ""; }, 500);   // page en arrière-plan : pas d'image affichée, donc pas de requestAnimationFrame
+  }
+};
 const ACT = "#e2702a", RECENT = "#0abfbf";
 const COLORS = ["#e2702a", "#4a90d9", "#9b6fd6", "#1fce8a", "#e3a21a", "#e05a8a"];
 const KIND = (e) => (/person|humain|personne/i.test(e.entity + " " + (e.name || "")) ? ["Personne", "#e05a8a"] : /vehic/i.test(e.entity + " " + (e.name || "")) ? ["Véhicule", "#4a90d9"] : /anim|pet|dog|chien|chat/i.test(e.entity + " " + (e.name || "")) ? ["Animal", "#9b6fd6"] : [e.name, "#e3a21a"]);
@@ -130,6 +150,9 @@ class HolmSecurityCard extends HTMLElement {
       ${camLegend ? `<div class="lg"><span><b style="background:${ACT}"></b>Mouvement</span>${camLegend}</div>` : ""}`;
   }
   _render() {
+    return keepScroll(this, () => this._renderNow());
+  }
+  _renderNow() {
     if (!this.shadowRoot || !this._c || !this._hass) return;
     const c = this._c;
     const G = c.groups.map((g, i) => ({ ...g, _i: i, E: (g.entities || []).map((e) => this._ent(e, g)) }));
@@ -438,4 +461,4 @@ window.customCards = window.customCards || [];
 window.customCards.push({ type: "holm-security-card", name: "HOLM – Sécurité", description: "Mouvements, ouvertures et détections caméra : tuiles en direct et chronologie 24 h", preview: false });
 })();
 
-console.info("%c HOLM-SECURITY %c 1.1.0 ", "background:#e2702a;color:#111;border-radius:3px 0 0 3px", "background:#123;color:#fff;border-radius:0 3px 3px 0");
+console.info("%c HOLM-SECURITY %c 1.1.1 ", "background:#e2702a;color:#111;border-radius:3px 0 0 3px", "background:#123;color:#fff;border-radius:0 3px 3px 0");
